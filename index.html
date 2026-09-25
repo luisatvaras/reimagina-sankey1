@@ -1,0 +1,310 @@
+<!doctype html>
+<!-- Plantilla: no abrir directo. build_sankey.py la llena con los datos del
+     CSV y escribe sankey.html. -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReImagina — Sankey de indicadores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --surface-2: #f3f2ef;
+    --border: #e2e1dc;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #8a8984;
+    --node: #52514e;
+    --no-source: #b9b8b2;
+    --d1: #2a78d6; --d2: #eb6834; --d3: #1baf7a; --d4: #eda100;
+    --d5: #e87ba4; --d6: #008300; --d7: #4a3aa7; --d8: #e34948;
+    --link-opacity: 0.38;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface-1: #1a1a19; --surface-2: #242422; --border: #3a3a37;
+      --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+      --node: #c3c2b7; --no-source: #5c5b56;
+      --d1: #3987e5; --d2: #d95926; --d3: #199e70; --d4: #c98500;
+      --d5: #d55181; --d6: #008300; --d7: #9085e9; --d8: #e66767;
+      --link-opacity: 0.45;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1: #1a1a19; --surface-2: #242422; --border: #3a3a37;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --node: #c3c2b7; --no-source: #5c5b56;
+    --d1: #3987e5; --d2: #d95926; --d3: #199e70; --d4: #c98500;
+    --d5: #d55181; --d6: #008300; --d7: #9085e9; --d8: #e66767;
+    --link-opacity: 0.45;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--surface-1);
+    color: var(--text-primary);
+    font-family: Montserrat, system-ui, sans-serif;
+  }
+  header { padding: 28px 32px 8px; max-width: 1100px; }
+  h1 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+  .subtitle { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 14px 32px 0; font-size: 12px; color: var(--text-secondary); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+  .chart-wrap { overflow-x: auto; padding: 8px 16px 24px; }
+  svg { display: block; font-family: inherit; }
+  .col-title { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; fill: var(--text-muted); }
+  .node rect { rx: 2px; }
+  .node text { font-size: 11px; fill: var(--text-primary); paint-order: stroke; stroke: var(--surface-1); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+  .node .count { fill: var(--text-muted); }
+  .node.domain text, .node.city text, .node.scale text { font-size: 13px; font-weight: 600; }
+  .node.core text { font-weight: 500; }
+  .link { fill: none; stroke-opacity: var(--link-opacity); transition: stroke-opacity 120ms; }
+  svg.focus .link { stroke-opacity: 0.06; }
+  svg.focus .link.on { stroke-opacity: 0.75; }
+  svg.focus .node { opacity: 0.25; }
+  svg.focus .node.on { opacity: 1; }
+
+  .tooltip {
+    position: fixed; pointer-events: none; z-index: 10; max-width: 340px;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; font-size: 12px; line-height: 1.45; color: var(--text-secondary);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12); opacity: 0; transition: opacity 80ms;
+  }
+  .tooltip strong { display: block; color: var(--text-primary); font-size: 13px; margin-bottom: 4px; }
+  .tooltip dl { margin: 6px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+  .tooltip dt { color: var(--text-muted); }
+  .tooltip dd { margin: 0; color: var(--text-primary); }
+  .tooltip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+
+  details { margin: 0 32px 40px; font-size: 13px; }
+  summary { cursor: pointer; color: var(--text-secondary); font-weight: 500; }
+  table { border-collapse: collapse; margin-top: 12px; width: 100%; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ReImagina — de ciudad de estudio a escalabilidad</h1>
+  <p class="subtitle" id="subtitle"></p>
+</header>
+<div class="legend" id="legend"></div>
+<div class="chart-wrap"><svg id="chart"></svg></div>
+<div class="tooltip" id="tooltip"></div>
+<details>
+  <summary>Ver como tabla</summary>
+  <table id="table"></table>
+</details>
+
+<script>
+const ROWS = [{"sub": "Daytime land-surface temperature", "core": "Heat exposure", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "ROSSANO", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": "Raster"}, {"sub": "Extreme-heat frequency", "core": "Heat exposure", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "ROSSANO", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": "Raster"}, {"sub": "Night-time heat retention", "core": "Heat exposure", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "ROSSANO", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": "Raster"}, {"sub": "Dry bulb air temperature", "core": "Thermal Comfort", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "ROSSANO", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": "Estadística climatica"}, {"sub": "Mean radiant temperature", "core": "Thermal Comfort", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "ROSSANO", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": "Estadística climatica"}, {"sub": "Wind speed 10m above ground level", "core": "Thermal Comfort", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "ROSSANO", "direction": "", "cls": "Diagnóstico", "dataType": "Estadística climatica"}, {"sub": "Relative humidity", "core": "Thermal Comfort", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "ROSSANO", "direction": "", "cls": "Diagnóstico", "dataType": "Estadística climatica"}, {"sub": "Heat exposure", "core": "Global Urban Heat Vulnerability Index (GUHVI)", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "", "cls": "Diagnóstico", "dataType": "Raster"}, {"sub": "Heat sensitivity", "core": "Global Urban Heat Vulnerability Index (GUHVI)", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "", "cls": "Diagnóstico", "dataType": "Estadística censal - Raster"}, {"sub": "Adaptive capability", "core": "Global Urban Heat Vulnerability Index (GUHVI)", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "", "cls": "Diagnóstico", "dataType": "Estadística censal"}, {"sub": "Vegetation coverage percent", "core": "Vegetation and shade", "domains": ["Ambient environment", "Built environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "JUAN", "direction": "Higher is better", "cls": "Diagnóstico", "dataType": "Raster"}, {"sub": "Tree-canopy cover", "core": "Vegetation and shade", "domains": ["Ambient environment", "Built environment"], "sources": ["tree_canopy.tif"], "sourceRaw": "tree_canopy.tif", "calculated": "YES", "by": "JUAN", "direction": "Higher is better", "cls": "Diagnóstico", "dataType": "Raster"}, {"sub": "Shade / cooling refuge access", "core": "Vegetation and shade", "domains": ["Ambient environment", "Built environment"], "sources": ["tree_canopy.tif", "evial_mxli"], "sourceRaw": "tree_canopy.tif, evial_mxli", "calculated": "YES", "by": "JUAN", "direction": "Higher is better", "cls": "Diagnóstico", "dataType": "Raster + sidewalk"}, {"sub": "Access to parks (local, neighbourhood, district, regional)", "core": "Access to parks", "domains": ["Ambient environment", "Built environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "JUAN", "direction": "Shorter/Closest is better", "cls": "Recálculo", "dataType": "Vectorial: land_use park=park + sidewalk"}, {"sub": "Population with access to parks", "core": "Access to parks", "domains": ["Ambient environment", "Built environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "JUAN", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: land_use park=park+ red peatonal + pop/viv"}, {"sub": "% of total land area within 500 m pedestrian network distance of LPUGS (LPUGS Accesibility)", "core": "Large Public Open Spaces Accesibility", "domains": ["Ambient environment", "Built environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "Shorter/Closest is better", "cls": "Recálculo", "dataType": "Vectorial: land_use park=park + area >= 500m + sidewalk"}, {"sub": "% of population with access to LPUGS within 500 m pedestrian network distance (LPUGS Accesibility)", "core": "Large Public Open Spaces Accesibility", "domains": ["Ambient environment", "Built environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "Shorter/Closest is better", "cls": "Recálculo", "dataType": "Vectorial: land_use park=park + area >= 500m + sidewalk + pop/viv"}, {"sub": "% of total land area that is annual average NDVI ≥ 0.2 (LPUGS Availability)", "core": "Large Public Open Spaces Availability", "domains": ["Ambient environment", "Built environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "Shorter/Closest is better", "cls": "Diagnóstico", "dataType": "Raster"}, {"sub": "% of total land area that is LPUGS (LPUGS Availability)", "core": "Large Public Open Spaces Availability", "domains": ["Ambient environment", "Built environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "Shorter/Closest is better", "cls": "Recálculo", "dataType": "Vectorial: land_use"}, {"sub": "Available natural blue spaces", "core": "Available natural blue spaces", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "", "cls": "Diagnóstico", "dataType": "Raster"}, {"sub": "Annual PM2.5", "core": "Air-quality exposure", "domains": ["Ambient environment"], "sources": ["RedSPIRA (potencial)"], "sourceRaw": "Potentially: https://mapa.redspira.org/#z=12.613333333333332&x=-115.3476&y=32.5917", "calculated": "Do not calculate for the workshop", "by": "", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": "Estadística climatica"}, {"sub": "Annual NO2", "core": "Air-quality exposure", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "Do not calculate for the workshop", "by": "", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": "Estadística climatica"}, {"sub": "Number of days with good air quality", "core": "Air-quality exposure", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "Do not calculate for the workshop", "by": "", "direction": "Higher is better", "cls": "Diagnóstico", "dataType": "Estadística climatica"}, {"sub": "Proximity to major roads", "core": "Proximity to high levels of traffic", "domains": ["Ambient environment", "Safety"], "sources": ["OSM Road Network"], "sourceRaw": "OSM Road Network", "calculated": "YES", "by": "JUAN", "direction": "", "cls": "Recálculo", "dataType": "Vectorial: road_segment + sidewalk"}, {"sub": "Population exposure to flooding", "core": "Flooding hazard exposure", "domains": ["Ambient environment"], "sources": ["Censo 2020", "atus_2024_shp"], "sourceRaw": "Censo_2020, atus_2024_shp", "calculated": "YES", "by": "JUAN", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": "Estadistica de riesgos"}, {"sub": "Main road flood area location count", "core": "Flooding hazard exposure", "domains": ["Ambient environment"], "sources": ["atus_2024_shp", "evial_mxli"], "sourceRaw": "atus_2024_shp, evial_mxli", "calculated": "YES", "by": "JUAN", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": "Estadistica de riesgos"}, {"sub": "Earthquake vulnerability", "core": "Earthquake vulnerability", "domains": ["Ambient environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "Do not calculate for the workshop", "by": "", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": "Estadistica de riesgos"}, {"sub": "Street connectivity", "core": "Walkability Index", "domains": ["Built environment", "Mobility & Transport", "Social infrastructure"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: intersection + road_segment"}, {"sub": "Block size", "core": "Pedestrian infrastructure presence", "domains": ["Built environment", "Mobility & Transport", "Safety"], "sources": ["OSM Road Network"], "sourceRaw": "OSM Road Network", "calculated": "YES", "by": "JUAN", "direction": "More direct is better", "cls": "Recálculo", "dataType": "Vectorial: geometría de block"}, {"sub": "Sidewalk coverage", "core": "Pedestrian infrastructure presence", "domains": ["Built environment", "Mobility & Transport", "Safety"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "ALEJANDRO", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: sidewalk + road_segment"}, {"sub": "Net residential density", "core": "Walkability Index", "domains": ["Built environment", "Mobility & Transport", "Social infrastructure"], "sources": ["USOS_DE_SUELO_EXITS_24"], "sourceRaw": "USOS_DE_SUELO_EXITS_24", "calculated": "REVIEW", "by": "JUAN", "direction": "GOHSC threshold", "cls": "Recálculo", "dataType": "Vectorial: people_per_household + num_levels + area (mix use y multifamily)"}, {"sub": "Commercial land use proportion", "core": "Walkability Index", "domains": ["Built environment", "Mobility & Transport", "Social infrastructure"], "sources": ["USOS_DE_SUELO_EXITS_24"], "sourceRaw": "USOS_DE_SUELO_EXITS_24", "calculated": "REVIEW", "by": "JUAN", "direction": "", "cls": "Recálculo", "dataType": ""}, {"sub": "Land use mix", "core": "Walkability Index", "domains": ["Built environment", "Mobility & Transport", "Social infrastructure"], "sources": ["USOS_DE_SUELO_EXITS_24"], "sourceRaw": "USOS_DE_SUELO_EXITS_24", "calculated": "REVIEW", "by": "JUAN", "direction": "Higher is better", "cls": "Recálculo", "dataType": ""}, {"sub": "Access to public transport stops", "core": "Public-transport access", "domains": ["Mobility & Transport"], "sources": ["Suburban Transport Route"], "sourceRaw": "Suburban Transport Route", "calculated": "REVIEW", "by": "CARL", "direction": "Shorter is better", "cls": "Recálculo", "dataType": "Vectorial: bus_stop/station + red peatonal"}, {"sub": "Access to co-location of recreational areas with public transport", "core": "Public-transport access", "domains": ["Mobility & Transport"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "Do not calculate for the workshop", "by": "", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: combinación de bus_stop/station y parks"}, {"sub": "Heat-safe public transport access", "core": "Public-transport access", "domains": ["Mobility & Transport"], "sources": ["Urban Transport Route"], "sourceRaw": "Urban Transport Route", "calculated": "Do not calculate for the workshop", "by": "", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": "Raster"}, {"sub": "Access to fresh food", "core": "Daily essential-services access", "domains": ["Social infrastructure", "Mobility & Transport", "Economic development"], "sources": ["Tenure"], "sourceRaw": "Tenure", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: sidewalk + commerce_type"}, {"sub": "Diversity of available fresh food", "core": "Daily essential-services access", "domains": ["Social infrastructure", "Mobility & Transport", "Economic development"], "sources": ["DENUE_2026"], "sourceRaw": "DENUE_2026", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: commerce_type + red peatonal + radio caminable (300m)"}, {"sub": "Percentage of population with access to fresh food", "core": "Daily essential-services access", "domains": ["Social infrastructure", "Mobility & Transport", "Economic development"], "sources": ["DENUE_2026"], "sourceRaw": "DENUE_2026", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: commerce_type + red peatonal +radio caminable (300m) + pop/viv"}, {"sub": "Access to convenience stores", "core": "Daily essential-services access", "domains": ["Social infrastructure", "Mobility & Transport", "Economic development"], "sources": ["Road Network"], "sourceRaw": "Road Network", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: sidewalk + commerce_type"}, {"sub": "Percentage of population with access to convenience stores", "core": "Daily essential-services access", "domains": ["Social infrastructure", "Mobility & Transport", "Economic development"], "sources": ["DENUE_2026"], "sourceRaw": "DENUE_2026", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: commerce_type + red peatonal +radio caminable (300m) + pop/viv"}, {"sub": "Access to petrol station (>= 250m away)", "core": "Daily essential-services access", "domains": ["Social infrastructure", "Mobility & Transport", "Economic development"], "sources": ["DENUE_2026"], "sourceRaw": "DENUE_2026", "calculated": "YES", "by": "CARL", "direction": "Closer is worse", "cls": "Recálculo", "dataType": "Vectorial: commerce_type + sidewalk +radio caminable (250m) + pop/viv"}, {"sub": "Percentage of population with access to petrol stations", "core": "Daily essential-services access", "domains": ["Social infrastructure", "Mobility & Transport", "Economic development"], "sources": ["DENUE_2026"], "sourceRaw": "DENUE_2026", "calculated": "YES", "by": "CARL", "direction": "Closer is worse", "cls": "Recálculo", "dataType": "Vectorial: commerce_type + sidewalk +radio caminable (250m) + pop/viv"}, {"sub": "Access to educational services", "core": "Health, education and care access", "domains": ["Social infrastructure"], "sources": ["DENUE_2026"], "sourceRaw": "DENUE_2026", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: amenity_type + red peatonal"}, {"sub": "Diversity of available educational services", "core": "Health, education and care access", "domains": ["Social infrastructure"], "sources": ["DENUE_2026"], "sourceRaw": "DENUE_2026", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": ""}, {"sub": "Access to health & health care services", "core": "Health, education and care access", "domains": ["Social infrastructure"], "sources": ["DENUE_2026"], "sourceRaw": "DENUE_2026", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": ""}, {"sub": "Diversity of available health & health care services", "core": "Health, education and care access", "domains": ["Social infrastructure"], "sources": ["DENUE_2026"], "sourceRaw": "DENUE_2026", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": ""}, {"sub": "Access to care services", "core": "Health, education and care access", "domains": ["Social infrastructure"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": ""}, {"sub": "Diversity of care services", "core": "Health, education and care access", "domains": ["Social infrastructure"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": ""}, {"sub": "Access to community, culture and recreation services", "core": "Community, culture and recreation access", "domains": ["Social infrastructure"], "sources": ["DENUE_2026"], "sourceRaw": "DENUE_2026", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": ""}, {"sub": "Diversity of community, culture and recreation services", "core": "Community, culture and recreation access", "domains": ["Social infrastructure"], "sources": ["DENUE_2026"], "sourceRaw": "DENUE_2026", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": ""}, {"sub": "Reachable jobs", "core": "Access to employment", "domains": ["Economic development"], "sources": ["DENUE_2026"], "sourceRaw": "DENUE_2026", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: Denue + Lot: Amenity_type - Commerce_type"}, {"sub": "Access to manufacturing district/centre", "core": "Access to employment", "domains": ["Economic development"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "REVIEW", "by": "CARL", "direction": "Shorter is better", "cls": "Recálculo", "dataType": "Agregar a land_use: Industrial. Datos a nivel ciudad"}, {"sub": "Job diversity", "core": "Access to employment", "domains": ["Economic development"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "REVIEW", "by": "JUAN", "direction": "Higher is better", "cls": "Recálculo", "dataType": ""}, {"sub": "Housing affordability/stress", "core": "Housing affordability and adequacy", "domains": ["Housing"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "REVIEW", "by": "JUAN", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": ""}, {"sub": "Access to basic services", "core": "Housing affordability and adequacy", "domains": ["Housing"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "Higher is better", "cls": "Diagnóstico", "dataType": ""}, {"sub": "Crime exposure", "core": "Personal and road safety", "domains": ["Safety", "Mobility & Transport", "Built environment"], "sources": ["SESNSP"], "sourceRaw": "SESNSP — Cifras de incidencia delictiva municipal (carpetas de investigación, fuero común). https://www.gob.mx/sesnsp", "calculated": "YES", "by": "ALEJANDRO", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": ""}, {"sub": "Road safety risk", "core": "Personal and road safety", "domains": ["Safety", "Mobility & Transport", "Built environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "REVIEW", "by": "ALEJANDRO", "direction": "Lower is better", "cls": "Diagnóstico", "dataType": ""}, {"sub": "% of the population with coverage of police stations", "core": "Personal and road safety", "domains": ["Safety", "Mobility & Transport", "Built environment"], "sources": ["INEGI Marco Geoestadístico (02sip)"], "sourceRaw": "Marco Geoestadístico: capa 02sip. Filtrar por TIPO/ https://www.inegi.org.mx/app/mapa/denue/", "calculated": "YES", "by": "ALEJANDRO", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: road_segment + police_station"}, {"sub": "% of the population with coverage of of emergency services", "core": "Personal and road safety", "domains": ["Safety", "Mobility & Transport", "Built environment"], "sources": ["INEGI Marco Geoestadístico (02sip)"], "sourceRaw": "Marco Geoestadístico: capa 02sip. Filtrar por TIPO/ 21 active stations(excludes ex-firefighters fraternity and sub-comandancia). https://www.inegi.org.mx/app/mapa/denue/", "calculated": "YES", "by": "ALEJANDRO", "direction": "", "cls": "Recálculo", "dataType": "Vectorial: road_segment + fire_station"}, {"sub": "Presence of street lightning", "core": "Personal and road safety", "domains": ["Safety", "Mobility & Transport", "Built environment"], "sources": ["INVI 2020"], "sourceRaw": "INVI 2020 — Inventario Nacional de Vivienda, CONAVI/SEDATU. CVE_MUN=002 (Mexicali).", "calculated": "YES", "by": "ALEJANDRO", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: streetlight + road_segment*"}, {"sub": "Average distance to nearest to cycling station", "core": "Level of Traffic Stress for Cycling", "domains": ["Safety", "Mobility & Transport", "Built environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "YES", "by": "CARL", "direction": "", "cls": "", "dataType": ""}, {"sub": "Bicycle lanes coverage", "core": "Cycling infrastructure presence", "domains": ["Safety", "Mobility & Transport", "Built environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "REVIEW", "by": "ALEJANDRO", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: bike_lane + road_segment"}, {"sub": "Protected bicycle lanes coverage", "core": "Cycling infrastructure presence", "domains": ["Safety", "Mobility & Transport", "Built environment"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "REVIEW", "by": "ALEJANDRO", "direction": "Higher is better", "cls": "Recálculo", "dataType": "Vectorial: bike_lane"}, {"sub": "Population density", "core": "Sociodemographics (sin core measure)", "domains": ["Sociodemographics"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "", "by": "", "direction": "", "cls": "", "dataType": ""}, {"sub": "Total population", "core": "Sociodemographics (sin core measure)", "domains": ["Sociodemographics"], "sources": ["Sin fuente definida"], "sourceRaw": "", "calculated": "", "by": "", "direction": "", "cls": "", "dataType": ""}];
+const CITY_DOMAINS = {"Condesa": ["Sociodemographics"], "Mexicali": ["Sociodemographics"], "Topochico": ["Sociodemographics"], "Tlalpan": ["Sociodemographics"], "Monterrey": ["Sociodemographics"]};
+const CITIES = Object.keys(CITY_DOMAINS);
+const SCALES = ["Mundial", "Nacional", "Local", "Por proyecto"];
+const SOURCE_SCALE = {"OSM Road Network": "Mundial", "DENUE_2026": "Nacional", "Censo 2020": "Nacional", "INEGI Marco Geoestadístico (02sip)": "Nacional", "INVI 2020": "Nacional", "SESNSP": "Nacional"};
+const NO_SOURCE = "Sin fuente definida";
+
+// --- Colores: un color por dominio, en orden fijo por tamaño -------------
+const domainCount = d3.rollup(ROWS.flatMap(r => r.domains), v => v.length, d => d);
+const DOMAINS = [...domainCount.keys()].sort((a, b) => domainCount.get(b) - domainCount.get(a));
+const domainVar = new Map(DOMAINS.map((d, i) => [d, `var(--d${i + 1})`]));
+
+// --- Flujos: una unidad por (subvariable × dominio), repartida entre sus
+// fuentes y entre las ciudades conectadas a ese dominio (si hay). Cada link
+// del sankey guarda qué flujos pasan por él, para poder resaltar el
+// recorrido completo al hacer hover.
+const citiesOf = d => CITIES.filter(c => CITY_DOMAINS[c].includes(d));
+const flows = [];
+ROWS.forEach((r, ri) => {
+  r.domains.forEach(d => {
+    const cities = citiesOf(d);
+    (cities.length ? cities : [null]).forEach(city => {
+      r.sources.forEach(s => flows.push({
+        ri, d, city, core: r.core, sub: r.sub, src: s, scale: SOURCE_SCALE[s] || null,
+        w: 1 / r.sources.length / (cities.length || 1),
+      }));
+    });
+  });
+});
+
+// Orden de nodos: dominios por tamaño; core measures agrupadas por su
+// dominio principal; subvariables bajo su core; fuentes según la posición
+// media de las subvariables que las alimentan (menos cruces). Sin fuente al final.
+const coreOrder = [];
+DOMAINS.forEach(d => ROWS.forEach(r => { if (r.domains[0] === d && !coreOrder.includes(r.core)) coreOrder.push(r.core); }));
+const subOrder = [];
+coreOrder.forEach(c => ROWS.forEach((r, ri) => { if (r.core === c) subOrder.push(ri); }));
+const subPos = new Map(subOrder.map((ri, i) => [ri, i]));
+const srcPos = d3.rollup(flows, v => d3.mean(v, f => subPos.get(f.ri)), f => f.src);
+const sources = [...srcPos.keys()].sort((a, b) => (a === NO_SOURCE) - (b === NO_SOURCE) || srcPos.get(a) - srcPos.get(b));
+
+const nodes = [];
+const nodeId = new Map();
+function addNode(key, col, name, extra = {}) { nodeId.set(key, nodes.length); nodes.push({ key, col, name, ...extra }); }
+CITIES.forEach(c => addNode("m:" + c, 0, c, { kind: "city" }));
+DOMAINS.forEach(d => addNode("d:" + d, 1, d, { kind: "domain", domain: d }));
+coreOrder.forEach(c => addNode("c:" + c, 2, c, { kind: "core" }));
+subOrder.forEach(ri => addNode("s:" + ri, 3, ROWS[ri].sub, { kind: "sub", row: ROWS[ri] }));
+sources.forEach(s => addNode("f:" + s, 4, s, { kind: "source" }));
+SCALES.forEach(e => addNode("e:" + e, 5, e, { kind: "scale" }));
+
+const linkMap = new Map();
+function addLink(a, b, d, fi, w) {
+  const k = `${a}|${b}|${d}`;
+  if (!linkMap.has(k)) linkMap.set(k, { source: nodeId.get(a), target: nodeId.get(b), value: 0, domain: d, flows: new Set() });
+  const l = linkMap.get(k); l.value += w; l.flows.add(fi);
+}
+flows.forEach((f, fi) => {
+  if (f.city) addLink("m:" + f.city, "d:" + f.d, f.d, fi, f.w);
+  addLink("d:" + f.d, "c:" + f.core, f.d, fi, f.w);
+  addLink("c:" + f.core, "s:" + f.ri, f.d, fi, f.w);
+  addLink("s:" + f.ri, "f:" + f.src, f.d, fi, f.w);
+  if (f.scale) addLink("f:" + f.src, "e:" + f.scale, f.d, fi, f.w);
+});
+// d3-sankey decide cuántas columnas hay según el camino conectado más
+// largo, y ninguno llega todavía de "Ciudad" a "Escalabilidad" — sin esto
+// la última columna se encima con la de fuentes. Una cadena invisible de
+// nodos y links de valor 0 fuerza las 6 columnas; no se dibuja.
+const COLS = 6;
+for (let c = 0; c < COLS; c++) addNode("ghost:" + c, c, "", { kind: "ghost" });
+for (let c = 0; c < COLS - 1; c++) {
+  linkMap.set("ghost" + c, { source: nodeId.get("ghost:" + c), target: nodeId.get("ghost:" + (c + 1)), value: 0, domain: null, flows: new Set() });
+}
+const links = [...linkMap.values()];
+nodes.forEach((n, i) => { n.flows = new Set(); });
+links.forEach(l => l.flows.forEach(fi => { nodes[l.source].flows.add(fi); nodes[l.target].flows.add(fi); }));
+
+// --- Layout ----------------------------------------------------------------
+const W = 1980, H = 1700;
+const M = { top: 40, right: 140, bottom: 20, left: 150 };
+const svg = d3.select("#chart").attr("width", W).attr("height", H).attr("viewBox", [0, 0, W, H]);
+
+const sankey = d3.sankey()
+  .nodeId((d, i) => i)
+  .nodeAlign(n => n.col)
+  .nodeWidth(10)
+  .nodePadding(8)
+  .nodeSort(null)
+  .extent([[M.left, M.top], [W - M.right, H - M.bottom]]);
+const graph = sankey({ nodes: nodes.map(d => ({ ...d })), links: links.map(d => ({ ...d })) });
+
+// Ciudades y escalabilidad se reparten a lo alto de toda la columna (cada
+// nodo centrado en su franja), en vez de quedar apilados arriba o frente a
+// lo que conectan.
+function spreadColumn(kind) {
+  const col = graph.nodes.filter(n => n.kind === kind);
+  const slot = (H - M.top - M.bottom) / col.length;
+  col.forEach((n, i) => {
+    const h = n.y1 - n.y0, mid = M.top + slot * (i + 0.5);
+    n.y0 = mid - h / 2; n.y1 = mid + h / 2;
+  });
+}
+spreadColumn("city");
+spreadColumn("scale");
+sankey.update(graph);
+
+const colX = d3.range(COLS).map(c => graph.nodes.find(n => n.col === c).x0);
+["Ciudad de estudio", "Dominio", "Core measure", "Subvariable", "Fuente de datos", "Escalabilidad"].forEach((t, c) => {
+  svg.append("text").attr("class", "col-title").attr("x", colX[c] + (c === 0 ? 10 : 0)).attr("y", 20)
+    .attr("text-anchor", c === 0 ? "end" : "start").text(t);
+});
+
+const linkSel = svg.append("g").selectAll("path").data(graph.links.filter(l => l.domain)).join("path")
+  .attr("class", "link")
+  .attr("d", d3.sankeyLinkHorizontal())
+  .attr("stroke", d => domainVar.get(d.domain))
+  .attr("stroke-width", d => Math.max(1, d.width));
+
+const nodeSel = svg.append("g").selectAll("g").data(graph.nodes.filter(n => n.kind !== "ghost")).join("g")
+  .attr("class", d => `node ${d.kind}`);
+nodeSel.append("rect")
+  .attr("x", d => d.x0)
+  // Una escala sin fuentes conectadas mide 0 — se dibuja igual para que se vea.
+  .attr("y", d => d.kind === "scale" && d.y1 - d.y0 < 8 ? (d.y0 + d.y1) / 2 - 4 : d.y0)
+  .attr("width", d => d.x1 - d.x0).attr("height", d => d.kind === "scale" ? Math.max(8, d.y1 - d.y0) : Math.max(1, d.y1 - d.y0))
+  .attr("fill", d => d.kind === "domain" ? domainVar.get(d.domain) : d.name === NO_SOURCE ? "var(--no-source)" : "var(--node)");
+
+const subCount = n => new Set([...n.flows].map(fi => flows[fi].ri)).size;
+const truncate = (s, n) => s.length > n ? s.slice(0, n - 1) + "…" : s;
+const label = nodeSel.append("text")
+  .attr("x", d => d.kind === "city" ? d.x0 - 8 : d.x1 + 6)
+  .attr("y", d => (d.y0 + d.y1) / 2)
+  .attr("dy", "0.35em")
+  .attr("text-anchor", d => d.kind === "city" ? "end" : "start");
+label.append("tspan").text(d => d.kind === "sub" ? truncate(d.name, 52) : d.kind === "core" ? truncate(d.name, 44) : d.name);
+label.filter(d => d.kind !== "sub").append("tspan").attr("class", "count").text(d => `  ${subCount(d)}`);
+
+// --- Hover: resalta todos los flujos que pasan por el nodo/link ------------
+const tip = d3.select("#tooltip");
+function focus(flowSet) {
+  svg.classed("focus", true);
+  linkSel.classed("on", l => [...l.flows].some(fi => flowSet.has(fi)));
+  nodeSel.classed("on", n => [...n.flows].some(fi => flowSet.has(fi)));
+}
+function unfocus() { svg.classed("focus", false); linkSel.classed("on", false); nodeSel.classed("on", false); tip.style("opacity", 0); }
+function moveTip(e) {
+  const pad = 14, box = tip.node().getBoundingClientRect();
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + box.width > innerWidth - 8) x = e.clientX - box.width - pad;
+  if (y + box.height > innerHeight - 8) y = innerHeight - box.height - 8;
+  tip.style("left", x + "px").style("top", y + "px");
+}
+const swatches = ds => ds.map(d => `<span class="sw" style="background:${domainVar.get(d)}"></span>${d}`).join("<br>");
+function nodeTip(n) {
+  if (n.kind === "sub") {
+    const r = n.row;
+    return `<strong>${r.sub}</strong><dl>
+      <dt>Core measure</dt><dd>${r.core}</dd>
+      <dt>Dominio</dt><dd>${swatches(r.domains)}</dd>
+      <dt>Fuente</dt><dd>${r.sourceRaw || NO_SOURCE}</dd>
+      ${r.dataType ? `<dt>Data type</dt><dd>${r.dataType}</dd>` : ""}
+      ${r.cls ? `<dt>Clase</dt><dd>${r.cls}</dd>` : ""}
+      ${r.calculated ? `<dt>Calculado</dt><dd>${r.calculated}${r.by ? " · " + r.by : ""}</dd>` : ""}
+      ${r.direction ? `<dt>Dirección</dt><dd>${r.direction}</dd>` : ""}</dl>`;
+  }
+  const byDomain = d3.rollup([...n.flows], v => new Set(v.map(fi => flows[fi].ri)).size, fi => flows[fi].d);
+  const rowsHtml = DOMAINS.filter(d => byDomain.has(d)).map(d => `<dt><span class="sw" style="background:${domainVar.get(d)}"></span>${d}</dt><dd>${byDomain.get(d)}</dd>`).join("");
+  return `<strong>${n.name}</strong>${subCount(n)} subvariables${n.kind === "domain" ? "" : `<dl>${rowsHtml}</dl>`}`;
+}
+nodeSel
+  .on("mouseenter", (e, n) => { focus(n.flows); tip.html(nodeTip(n)).style("opacity", 1); moveTip(e); })
+  .on("mousemove", moveTip)
+  .on("mouseleave", unfocus);
+linkSel
+  .on("mouseenter", (e, l) => {
+    focus(l.flows);
+    tip.html(`<strong>${l.source.name} → ${l.target.name}</strong><span class="sw" style="background:${domainVar.get(l.domain)}"></span>${l.domain} · ${new Set([...l.flows].map(fi => flows[fi].ri)).size} subvariables`).style("opacity", 1);
+    moveTip(e);
+  })
+  .on("mousemove", moveTip)
+  .on("mouseleave", unfocus);
+
+// --- Leyenda, subtítulo y tabla -------------------------------------------
+d3.select("#legend").selectAll("span").data(DOMAINS).join("span")
+  .html(d => `<i style="background:${domainVar.get(d)}"></i>${d}`);
+const noSrc = ROWS.filter(r => r.sources[0] === NO_SOURCE).length;
+d3.select("#subtitle").text(
+  `${ROWS.length} subvariables en ${coreOrder.length} core measures y ${DOMAINS.length} dominios. ` +
+  `Cada banda es una subvariable; si pertenece a varios dominios, recibe una banda de cada uno, y si varias ciudades estudian un dominio, se reparte entre ellas. ` +
+  `${noSrc} no tienen fuente de datos definida.`
+);
+const cols = ["Dominio", "Core measure", "Subvariable", "Fuente de datos", "Clase", "Calculado por"];
+const table = d3.select("#table");
+table.append("thead").append("tr").selectAll("th").data(cols).join("th").text(d => d);
+table.append("tbody").selectAll("tr").data(subOrder.map(ri => ROWS[ri])).join("tr")
+  .selectAll("td").data(r => [r.domains.join("; "), r.core, r.sub, r.sourceRaw || NO_SOURCE, r.cls, r.by])
+  .join("td").text(d => d);
+</script>
+</body>
+</html>
