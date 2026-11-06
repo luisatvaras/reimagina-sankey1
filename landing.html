@@ -41,6 +41,7 @@ html[data-hero="manchas"] #cv { display: none; }
 html[data-hero="manchas"] .stage { background: #000000; }  /* lo que queda detrás de los círculos: se ve al apagarse */
 html[data-hero="manchas"] .page { position: relative; z-index: 2; }
 html[data-hero="manchas"] .hero, html[data-hero="manchas"] .nm-light { color: #111111; transition: color .2s; }
+html[data-hero="manchas"] .hero-slogan { color: #000000; }  /* siempre negro puro: se pierde solo cuando todo a su alrededor ya es negro */
 /* Con manchas, la primera sección llega sobre lo negro que dejan los círculos al cruzarse */
 html[data-hero="manchas"] #problema { --paper: #000000; --ink: #ffffff; --muted: #8a8a8a; --rule: #262626; background: var(--paper); color: var(--ink); color-scheme: dark; }
 
@@ -1430,7 +1431,6 @@ const MANCHAS_RECORRIDO = 330;  // scroll desde arriba hasta que los círculos l
 const TITULO_EN_PANTALLA = .875;  // dónde va el título de la sección siguiente cuando ReImagina llega a chiquito: 0 arriba, 1 abajo (.875 = centro del cuarto de abajo)
 const MANCHAS_DEFINIDOS = .6; // cuándo quedan todos nítidos, como parte del recorrido hasta el negro (0 a 1)
 const MANCHAS_DESCUBRE = .84;  // en ese mismo recorrido, cuándo empieza a aparecer la sección siguiente; ya se ve completa en TITULO_CHICO
-const SLOGAN_SE_VA = [.8, .9];  // en ese mismo recorrido, cuándo se desvanece el slogan: empieza y termina
 const MANCHA_TITULO_BLANCO = .35;  // ReImagina pasa a blanco cuando el fondo detrás de él es más oscuro que esto (0 negro, 1 blanco)
 // Tono: al llegar, el más claro de la escala de su dimensión en el mapa (MAP_TINTS) y, al final, el color pleno.
 const MANCHA_TONO_INICIO = MAP_TINTS[0];  // tono al llegar: de 0 (blanco) a 1 (color pleno)
@@ -1518,10 +1518,9 @@ if (heroVista === "manchas") {
       // ya enfocada: color lleno; el borde limpio lo da el border-radius
       it.el.style.background = n >= 1 ? color.formatHex() : degradado(color, n);
     }
-    // ReImagina y el slogan: negros sobre color claro, blancos cuando la mezcla detrás de ellos ya es oscura
+    // ReImagina: negro sobre color claro, blanco cuando la mezcla detrás de él ya es oscura. El slogan siempre va negro (ver CSS)
     const claridad = .2126 * fondo[0] + .7152 * fondo[1] + .0722 * fondo[2];
     hero.style.color = nmLight.style.color = claridad < MANCHA_TITULO_BLANCO ? "#ffffff" : "#111111";
-    heroTag.style.opacity = 1 - tramo(avanceTotal, SLOGAN_SE_VA[0], SLOGAN_SE_VA[1]);
     caja.style.background = crece >= 1 ? "#000000" : "#ffffff";  // ya cruzados: negro puro, para que empate con la página
     // Ya negro: los círculos se apagan y descubren la sección que venía subiendo detrás
     const apaga = tramo(avanceTotal, MANCHAS_DESCUBRE, TITULO_CHICO);
